@@ -55,15 +55,6 @@ func (n *PpsppVideoNetwork) GetBroadcaster(streamID string) (lpnet.Broadcaster, 
 		return nil, fmt.Errorf("error getting peers for stream %v: %v", streamID, err)
 	}
 
-	// Connect to those peers
-	// TODO: for a large Swarm, we only want to connect to a subset of peers.
-	for _, peer := range peers {
-		n.self.AddAddrs(peer.ID, peer.Addrs)
-		if err := n.self.Connect(peer.ID); err != nil {
-			glog.Errorf("error connecting to peer %s", peer.ID)
-		}
-	}
-
 	// Create a local swarm
 	swarmID := streamToSwarmID(streamID)
 	if err := n.self.P.AddSwarm(core.SwarmConfig{
@@ -75,6 +66,22 @@ func (n *PpsppVideoNetwork) GetBroadcaster(streamID string) (lpnet.Broadcaster, 
 		return nil, fmt.Errorf("error adding swarm: %v", err)
 	}
 
+	// Connect to those peers
+	// TODO: for a large Swarm, we only want to connect to a subset of peers.
+	var connectedPeers []Peer
+	for _, peer := range peers {
+		n.self.AddAddrs(peer.ID, peer.Addrs)
+		if err := n.self.Connect(peer.ID); err != nil {
+			glog.Errorf("error connecting to peer %s", peer.ID)
+			continue
+		}
+		if err := n.self.P.StartHandshake(peer.ID, swarmID); err != nil {
+			glog.Fatalf("error starting handshake with %s: %v", peer.ID, err)
+			continue
+		}
+		connectedPeers = append(connectedPeers, peer)
+	}
+
 	swarm, err := n.self.P.Swarm(swarmID)
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving swarm: %v", err)
@@ -82,6 +89,7 @@ func (n *PpsppVideoNetwork) GetBroadcaster(streamID string) (lpnet.Broadcaster, 
 
 	return &ppsppBroadcaster{
 		swarm: swarm,
+		peers: connectedPeers,
 	}, nil
 }
 
