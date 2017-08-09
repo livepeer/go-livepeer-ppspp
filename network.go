@@ -88,8 +88,10 @@ func (n *PpsppVideoNetwork) GetBroadcaster(streamID string) (lpnet.Broadcaster, 
 	}
 
 	return &ppsppBroadcaster{
-		swarm: swarm,
-		peers: connectedPeers,
+		p:       n.self.P,
+		swarmID: swarmID,
+		swarm:   swarm,
+		peers:   connectedPeers,
 	}, nil
 }
 

@@ -4,15 +4,20 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/golang/glog"
 	"github.com/livepeer/go-PPSPP/core"
 )
 
 type ppsppBroadcaster struct {
 	sync.Mutex
+
+	swarmID core.SwarmID
+	swarm   *core.Swarm
+	peers   []Peer
+	p       core.Protocol
+
 	nextSeq   uint64       // the next segment to broadcast
 	nextChunk core.ChunkID // the next chunk to broadcast
-	swarm     *core.Swarm
-	peers     []Peer
 }
 
 func (b *ppsppBroadcaster) Broadcast(seqNo uint64, data []byte) error {
@@ -39,16 +44,27 @@ func (b *ppsppBroadcaster) Broadcast(seqNo uint64, data []byte) error {
 		return err
 	}
 
+	// At this point, we consider the broadcast to have succeeded.
+	// We then proceed to send Have to our peers in a best-effort basis.
+	// TODO: investigate if Protocol.SendHave is thread-safe.
+	go b.sendHaves(b.nextChunk, b.nextChunk+core.ChunkID(numChunks))
+
 	b.nextSeq++
 	b.nextChunk += core.ChunkID(numChunks)
 
-	// At this point, we consider the broadcast to have succeeded.
-	// We then proceed to send Have to our peers in a best-effort basis.
 	return nil
 }
 
 func (b *ppsppBroadcaster) Finish() error {
 	return nil
+}
+
+func (b *ppsppBroadcaster) sendHaves(start core.ChunkID, end core.ChunkID) {
+	for _, peer := range b.peers {
+		if err := b.p.SendHave(start, end, peer.ID, b.swarmID); err != nil {
+			glog.Fatalf("error sending HAVE to %s: %v", peer.ID, err)
+		}
+	}
 }
 
 // chunk divides a byte slice into many fixed-size chunks, and invoke a
